@@ -1,0 +1,15 @@
+POST https://redash-proxy.evgcdn.net/api/queries/39/results
+Accept: */*
+Cache-Control: no-cache
+Authorization: Key meayFBZn9UDMdYLpV5vzkNcKEvEWvUTkc3QNrItr
+
+{"parameters":{"bucket":"'vnazota'","_part":"auto"}}
+
+###
+
+GET https://redash-proxy.evgcdn.net/api/job/abc
+Accept: */*
+Cache-Control: no-cache
+Authorization: Key meayFBZn9UDMdYLpV5vzkNcKEvEWvUTkc3QNrItr
+
+###

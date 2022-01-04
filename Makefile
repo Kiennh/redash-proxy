@@ -8,3 +8,5 @@ test:; go test -v
 
 run:; ./target/redashProxy 
 
+deploy:; scp    ./target/redashProxy  root@cdn_17: && scp ./target/deploy.sh root@cdn_17: && ssh root@cdn_17 'bash /root/deploy.sh'
+

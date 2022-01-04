@@ -1,0 +1,43 @@
+bind: 0.0.0.0
+port: 8080
+layout: 2006-01-02 15:04:05
+clickhouse: tcp://localhost:9001?username=default&debug=true
+debug: true
+min: 60
+max: 7776000
+maxBlock: 50
+timeout: 50
+thread: 2
+
+part: 10
+
+tableTimers:
+  - from: 0
+    name: agg_all
+    to: 21600
+
+  - from: 21599
+    name: agg_hourly_all
+    to: -1
+
+AggFuncs:
+  - name: toStartOfMinute(timestamp)
+    time: 60
+
+  - name: toStartOfFiveMinute(timestamp)
+    time: 300
+
+  - name: toStartOfTenMinutes(timestamp)
+    time: 600
+
+  - name: toStartOfFifteenMinutes(timestamp)
+    time: 900
+
+  - name: toStartOfHour(timestamp)
+    time: 3600
+
+  - name: toStartOfInterval(timestamp, INTERVAL 5 hour)
+    time: 18000
+
+  - name: toStartOfDay(timestamp)
+    time: 86400
