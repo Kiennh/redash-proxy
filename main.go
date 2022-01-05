@@ -150,11 +150,12 @@ func selectAggFunc(AggFuncs []AggFunc, maxBlock, diff int) string {
 func (a *App) queryHandler(context *gin.Context) {
 	key := context.Request.Header.Get("Authorization")
 	query := context.Param("query")
+	crashOnEmpty := context.Request.URL.Query().Get("crashOnEmpty")
 	data, err := ioutil.ReadAll(context.Request.Body)
 	if err != nil {
 		panic(err)
 	}
-	output, err := doProxy(data, a.RedashURl, query, key, a.Config.Layout, a.MaxWait, a.Config.MaxBlock, a.Config.TableTimers, a.Config.AggFuncs)
+	output, err := doProxy(data, a.RedashURl, query, key, a.Config.Layout, a.MaxWait, a.Config.MaxBlock, a.Config.TableTimers, a.Config.AggFuncs, crashOnEmpty)
 	if err != nil {
 		log.Println("Request body for error: ", string(data))
 		panic(err)
@@ -168,7 +169,7 @@ type proxyResponse struct {
 }
 
 func doProxy(jsonStr []byte, redashURL, query, key, layout string, maxWait, maxBlock int,
-	tableTimers []TableTimer, aggFuncs []AggFunc) ([]byte, error) {
+	tableTimers []TableTimer, aggFuncs []AggFunc, crashOnEmpty string) ([]byte, error) {
 	data := make(map[string]interface{})
 	err := json.Unmarshal(jsonStr, &data)
 	if err != nil {
@@ -245,7 +246,7 @@ func doProxy(jsonStr []byte, redashURL, query, key, layout string, maxWait, maxB
 						result <- response
 						return
 					}
-					partResult, err := doProxy(partRequestQuery, redashURL, query, key, layout, maxWait, maxBlock, tableTimers, aggFuncs)
+					partResult, err := doProxy(partRequestQuery, redashURL, query, key, layout, maxWait, maxBlock, tableTimers, aggFuncs, crashOnEmpty)
 					if err != nil {
 						response.err = err
 						result <- response
@@ -377,7 +378,16 @@ func doProxy(jsonStr []byte, redashURL, query, key, layout string, maxWait, maxB
 	if err != nil {
 		return nil, err
 	}
-
+	var finalResult Response
+	if crashOnEmpty == "1" {
+		err := json.Unmarshal(respBody, &finalResult)
+		if err != nil {
+			return nil, err
+		}
+		if len(finalResult.QueryResult.Data.Rows) == 0 {
+			return nil, fmt.Errorf("Empty result \n")
+		}
+	}
 	return respBody, nil
 }
 

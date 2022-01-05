@@ -3,7 +3,7 @@ Accept: */*
 Cache-Control: no-cache
 Authorization: Key meayFBZn9UDMdYLpV5vzkNcKEvEWvUTkc3QNrItr
 
-{"parameters":{"bucket":"'vnazota'","_part":"auto"}}
+{"parameters":{"bucket":"'cdnazota'","_part":"auto"}}
 
 ###
 
@@ -13,3 +13,11 @@ Cache-Control: no-cache
 Authorization: Key meayFBZn9UDMdYLpV5vzkNcKEvEWvUTkc3QNrItr
 
 ###
+
+POST {{host}}/api/queries/52/results?crashOnEmpty=1
+Accept: */*
+Cache-Control: no-cache
+Authorization: Key meayFBZn9UDMdYLpV5vzkNcKEvEWvUTkc3QNrItr
+
+{"parameters":{"bucket":"'cdnazota1'","time":"2021-12-01"}}
+
