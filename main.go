@@ -155,9 +155,8 @@ func (a *App) queryHandler(context *gin.Context) {
 	if err != nil {
 		panic(err)
 	}
-	output, err := doProxy(data, a.RedashURl, query, key, a.Config.Layout, a.MaxWait, a.Config.MaxBlock, a.Config.TableTimers, a.Config.AggFuncs, crashOnEmpty)
+	output, err := a.doProxy(data, query, key, crashOnEmpty)
 	if err != nil {
-		log.Println("Request body for error: ", string(data))
 		panic(err)
 	}
 	context.String(200, string(output))
@@ -168,8 +167,8 @@ type proxyResponse struct {
 	err  error
 }
 
-func doProxy(jsonStr []byte, redashURL, query, key, layout string, maxWait, maxBlock int,
-	tableTimers []TableTimer, aggFuncs []AggFunc, crashOnEmpty string) ([]byte, error) {
+
+func (a *App) doProxy(jsonStr []byte, query, key, crashOnEmpty string) ([]byte, error) {
 	data := make(map[string]interface{})
 	err := json.Unmarshal(jsonStr, &data)
 	if err != nil {
@@ -187,7 +186,7 @@ func doProxy(jsonStr []byte, redashURL, query, key, layout string, maxWait, maxB
 				if !ok {
 					break
 				}
-				fromDate, err := time.Parse(layout, fromTime.(string))
+				fromDate, err := time.Parse(a.Config.Layout, fromTime.(string))
 				if err != nil {
 					break
 				}
@@ -199,16 +198,15 @@ func doProxy(jsonStr []byte, redashURL, query, key, layout string, maxWait, maxB
 						break
 					}
 				}
-				toDate, err := time.Parse(layout, toTime.(string))
+				toDate, err := time.Parse(a.Config.Layout, toTime.(string))
 				if err != nil {
 					break
 				}
 				diff := int(toDate.Sub(fromDate).Seconds())
 
-				table := selectTable(tableTimers, diff)
-				functionNames := selectAggFunc(aggFuncs, maxBlock, diff)
+				table := selectTable(a.Config.TableTimers, diff)
+				functionNames := selectAggFunc(a.Config.AggFuncs, a.Config.MaxBlock, diff)
 
-				fmt.Println(maxBlock, diff, functionNames)
 				if ok && d == "auto" {
 					params.(map[string]interface{})["_agg"] = table.Name
 				}
@@ -246,7 +244,7 @@ func doProxy(jsonStr []byte, redashURL, query, key, layout string, maxWait, maxB
 						result <- response
 						return
 					}
-					partResult, err := doProxy(partRequestQuery, redashURL, query, key, layout, maxWait, maxBlock, tableTimers, aggFuncs, crashOnEmpty)
+					partResult, err := a.doProxy(partRequestQuery, query, key, crashOnEmpty)
 					if err != nil {
 						response.err = err
 						result <- response
@@ -267,7 +265,9 @@ func doProxy(jsonStr []byte, redashURL, query, key, layout string, maxWait, maxB
 			go func() {
 				for t := range result {
 					log.Println("Received")
-					allResults = append(allResults, t)
+					if len(t.data.QueryResult.Data.Rows) > 0 {
+						allResults = append(allResults, t)
+					}
 					wg.Done()
 				}
 			}()
@@ -292,7 +292,7 @@ func doProxy(jsonStr []byte, redashURL, query, key, layout string, maxWait, maxB
 		return nil, err
 	}
 
-	req, err := http.NewRequest("POST", fmt.Sprintf("%s/api/queries/%s/results", redashURL, query), bytes.NewBuffer(forceRequestQuery))
+	req, err := http.NewRequest("POST", fmt.Sprintf("%s/api/queries/%s/results", a.RedashURl, query), bytes.NewBuffer(forceRequestQuery))
 	if err != nil {
 
 		return nil, err
@@ -324,8 +324,8 @@ func doProxy(jsonStr []byte, redashURL, query, key, layout string, maxWait, maxB
 		return nil, fmt.Errorf(string(respBody))
 	}
 	resultId := 0
-	for i := 0; i < maxWait; i++ {
-		req, err := http.NewRequest("GET", fmt.Sprintf("%s/api/jobs/%s", redashURL, response.Job.ID), bytes.NewBuffer(forceRequestQuery2))
+	for i := 0; i < a.MaxWait; i++ {
+		req, err := http.NewRequest("GET", fmt.Sprintf("%s/api/jobs/%s", a.RedashURl, response.Job.ID), bytes.NewBuffer(forceRequestQuery2))
 		if err != nil {
 			panic(err)
 		}
@@ -355,10 +355,11 @@ func doProxy(jsonStr []byte, redashURL, query, key, layout string, maxWait, maxB
 		time.Sleep(1 * time.Second)
 	}
 	if resultId == 0 {
+		log.Println("Request body for error: ", string(jsonStr))
 		return nil, fmt.Errorf("Empty job\n")
 	}
 
-	req, err = http.NewRequest("POST", fmt.Sprintf("%s/api/queries/%s/results", redashURL, query), bytes.NewBuffer(forceRequestQuery2))
+	req, err = http.NewRequest("POST", fmt.Sprintf("%s/api/queries/%s/results", a.RedashURl, query), bytes.NewBuffer(forceRequestQuery2))
 	if err != nil {
 		return nil, err
 	}
