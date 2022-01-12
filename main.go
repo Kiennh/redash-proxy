@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/gin-gonic/gin"
+	"github.com/go-redis/redis/v8"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"log"
@@ -46,6 +47,7 @@ type App struct {
 	Bind      string
 	MaxWait   int
 	Config    Config
+	RDB       *redis.Client
 }
 
 func (a App) Start() {
@@ -92,7 +94,8 @@ func main() {
 	redashURL := flag.String("redash", "https://redash.evgcdn.net/", "Redash url")
 	bind := flag.String("bind", "0.0.0.0:8080", "Redash url")
 	maxWait := flag.Int("wait", 100, "Max wait in seconds")
-
+	redisHost := flag.String("redis", "localhost:2181", "redis url")
+	redisDB := flag.Int("redisDB", 0, "redisDB")
 	configFile := flag.String("config", "config.yaml", "Config file")
 	flag.Parse()
 
@@ -105,7 +108,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("error: %v", err)
 	}
-	fmt.Println(">", config.MaxBlock)
 	var a App
 	a.Bind = fmt.Sprintf("%s:%d", config.Bind, config.Port)
 	if config.Bind == "" {
@@ -120,6 +122,13 @@ func main() {
 		a.MaxWait = *maxWait
 	}
 	a.Config = config
+
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     *redisHost,
+		Password: "",       // no password set
+		DB:       *redisDB, // use default DB
+	})
+	a.RDB = rdb
 	a.Start()
 
 }
@@ -155,9 +164,24 @@ func (a *App) queryHandler(context *gin.Context) {
 	if err != nil {
 		panic(err)
 	}
-	output, err := a.doProxy(data, query, key, crashOnEmpty)
+	output, err := a.doProxy(data, query, key)
 	if err != nil {
 		panic(err)
+	}
+
+	defer func() {
+		log.Println(string(data), string(output))
+	}()
+
+	var finalResult Response
+	if crashOnEmpty == "1" {
+		err := json.Unmarshal(output, &finalResult)
+		if err != nil {
+			panic(err)
+		}
+		if len(finalResult.QueryResult.Data.Rows) == 0 {
+			panic(fmt.Errorf("Empty result \n"))
+		}
 	}
 	context.String(200, string(output))
 }
@@ -167,14 +191,12 @@ type proxyResponse struct {
 	err  error
 }
 
-
-func (a *App) doProxy(jsonStr []byte, query, key, crashOnEmpty string) ([]byte, error) {
+func (a *App) doProxy(jsonStr []byte, query, key string) ([]byte, error) {
 	data := make(map[string]interface{})
 	err := json.Unmarshal(jsonStr, &data)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println(string(jsonStr))
 	data["max_age"] = 1
 
 	if params, ok := data["parameters"]; ok {
@@ -226,7 +248,6 @@ func (a *App) doProxy(jsonStr []byte, query, key, crashOnEmpty string) ([]byte, 
 
 			for i := 0; i < 10; i++ {
 				go func(threadNumber int, rawRequest []byte) {
-					log.Println("Start", threadNumber)
 					var response proxyResponse
 					var d map[string]interface{}
 					err := json.Unmarshal(rawRequest, &d)
@@ -244,7 +265,7 @@ func (a *App) doProxy(jsonStr []byte, query, key, crashOnEmpty string) ([]byte, 
 						result <- response
 						return
 					}
-					partResult, err := a.doProxy(partRequestQuery, query, key, crashOnEmpty)
+					partResult, err := a.doProxy(partRequestQuery, query, key)
 					if err != nil {
 						response.err = err
 						result <- response
@@ -264,7 +285,6 @@ func (a *App) doProxy(jsonStr []byte, query, key, crashOnEmpty string) ([]byte, 
 			var allResults []proxyResponse
 			go func() {
 				for t := range result {
-					log.Println("Received")
 					if len(t.data.QueryResult.Data.Rows) > 0 {
 						allResults = append(allResults, t)
 					}
@@ -274,7 +294,7 @@ func (a *App) doProxy(jsonStr []byte, query, key, crashOnEmpty string) ([]byte, 
 
 			wg.Wait()
 
-			return mergeResult(allResults)
+			return a.mergeResult(allResults)
 		}
 
 	}
@@ -355,7 +375,6 @@ func (a *App) doProxy(jsonStr []byte, query, key, crashOnEmpty string) ([]byte, 
 		time.Sleep(1 * time.Second)
 	}
 	if resultId == 0 {
-		log.Println("Request body for error: ", string(jsonStr))
 		return nil, fmt.Errorf("Empty job\n")
 	}
 
@@ -379,20 +398,11 @@ func (a *App) doProxy(jsonStr []byte, query, key, crashOnEmpty string) ([]byte, 
 	if err != nil {
 		return nil, err
 	}
-	var finalResult Response
-	if crashOnEmpty == "1" {
-		err := json.Unmarshal(respBody, &finalResult)
-		if err != nil {
-			return nil, err
-		}
-		if len(finalResult.QueryResult.Data.Rows) == 0 {
-			return nil, fmt.Errorf("Empty result \n")
-		}
-	}
 	return respBody, nil
 }
 
-func mergeResult(results []proxyResponse) ([]byte, error) {
+func (a *App) mergeResult(results []proxyResponse) ([]byte, error) {
+
 	if len(results) == 0 {
 		return nil, fmt.Errorf("mergeResult, Empty result\n")
 	}
