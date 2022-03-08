@@ -3,7 +3,7 @@ Accept: */*
 Cache-Control: no-cache
 Authorization: Key meayFBZn9UDMdYLpV5vzkNcKEvEWvUTkc3QNrItr
 
-{"parameters":{"bucket":"'static'","_part":"auto"}}
+{"parameters":{"bucket":"'vnazota'","_part":"auto"}}
 
 ###
 
@@ -19,5 +19,16 @@ Accept: */*
 Cache-Control: no-cache
 Authorization: Key meayFBZn9UDMdYLpV5vzkNcKEvEWvUTkc3QNrItr
 
-{"parameters":{"bucket":"'vnazota'","time":"2021-11-01"}}
+{"parameters":{"bucket":"'vnazota','boxstudio'","time":"2022-01-01"}}
 
+###
+
+
+POST {{host}}/api/queries/56/results
+Accept: */*
+Cache-Control: no-cache
+Authorization: Key meayFBZn9UDMdYLpV5vzkNcKEvEWvUTkc3QNrItr
+
+{"parameters":{"day":"2022-03-06"}}
+
+###

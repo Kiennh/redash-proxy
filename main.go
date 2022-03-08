@@ -174,16 +174,22 @@ func (a *App) queryHandler(context *gin.Context) {
 	}()
 
 	var finalResult Response
+	err = json.Unmarshal(output, &finalResult)
+	if err != nil {
+		panic(err)
+	}
+	finalResult.QueryResult.Query = ""
+	finalResult.QueryResult.QueryHash = ""
 	if crashOnEmpty == "1" {
-		err := json.Unmarshal(output, &finalResult)
-		if err != nil {
-			panic(err)
-		}
 		if len(finalResult.QueryResult.Data.Rows) == 0 {
 			panic(fmt.Errorf("Empty result \n"))
 		}
 	}
-	context.String(200, string(output))
+	removedQueryData, err := json.Marshal(finalResult)
+	if err != nil {
+		panic(err)
+	}
+	context.String(200, string(removedQueryData))
 }
 
 type proxyResponse struct {
@@ -319,6 +325,7 @@ func (a *App) doProxy(jsonStr []byte, query, key string) ([]byte, error) {
 	}
 	req.Header.Set("Authorization", fmt.Sprintf("%s", key))
 	req.Header.Set("Content-Type", "application/json")
+	log.Println(fmt.Sprintf("%s/api/queries/%s/results", a.RedashURl, query), string(forceRequestQuery))
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
