@@ -169,10 +169,6 @@ func (a *App) queryHandler(context *gin.Context) {
 		panic(err)
 	}
 
-	defer func() {
-		log.Println(string(data), string(output))
-	}()
-
 	var finalResult Response
 	err = json.Unmarshal(output, &finalResult)
 	if err != nil {
@@ -185,6 +181,11 @@ func (a *App) queryHandler(context *gin.Context) {
 			panic(fmt.Errorf("Empty result \n"))
 		}
 	}
+
+	defer func() {
+		log.Println(string(data), toString(finalResult.QueryResult.Data.Rows))
+	}()
+
 	removedQueryData, err := json.Marshal(finalResult)
 	if err != nil {
 		panic(err)
@@ -283,6 +284,8 @@ func (a *App) doProxy(jsonStr []byte, query, key string) ([]byte, error) {
 						result <- response
 						return
 					}
+
+					log.Printf("Part %d  result %s \n", threadNumber, toString(response.data.QueryResult.Data.Rows))
 					result <- response
 					return
 				}(i, jsonStr)
@@ -299,7 +302,9 @@ func (a *App) doProxy(jsonStr []byte, query, key string) ([]byte, error) {
 			}()
 
 			wg.Wait()
-
+			if len(allResults) != 10 {
+				return nil, fmt.Errorf("Timeout triggered\n")
+			}
 			return a.mergeResult(allResults)
 		}
 
@@ -406,6 +411,14 @@ func (a *App) doProxy(jsonStr []byte, query, key string) ([]byte, error) {
 		return nil, err
 	}
 	return respBody, nil
+}
+
+func toString(rows []map[string]interface{}) string {
+	data, err := json.Marshal(rows)
+	if err != nil {
+		return err.Error()
+	}
+	return string(data)
 }
 
 func (a *App) mergeResult(results []proxyResponse) ([]byte, error) {
