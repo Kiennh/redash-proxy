@@ -12,6 +12,7 @@ import (
 	"log"
 	"net/http"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 )
@@ -78,16 +79,15 @@ type AggFunc struct {
 }
 
 type Config struct {
-	Port        int
-	Bind        string
-	Layout      string
-	RedashURL   string
-	MaxWait     int
-	MaxBlock    int          `yaml:"maxBlock"`
-	TableTimers []TableTimer `yaml:"tableTimers"`
-	AggFuncs    []AggFunc    `yaml:"AggFuncs"`
-	Part        int
-	PartIgnore  []string
+	Port             int
+	Bind             string
+	Layout           string
+	RedashURL        string
+	MaxWait          int
+	MaxBlock         int          `yaml:"maxBlock"`
+	TableTimers      []TableTimer `yaml:"tableTimers"`
+	AggFuncs         []AggFunc    `yaml:"AggFuncs"`
+	AllowSplitBucket string       `yaml:"AllowSplitBucket"`
 }
 
 func main() {
@@ -209,6 +209,9 @@ func (a *App) doProxy(jsonStr []byte, query, key string) ([]byte, error) {
 	if params, ok := data["parameters"]; ok {
 		d, ok := params.(map[string]interface{})["_agg"]
 		d2, ok2 := params.(map[string]interface{})["_time"]
+		buckets := params.(map[string]interface{})["bucket"]
+
+		// auto time and agg function
 		if (ok || ok2) && (d == "auto" || d2 == "auto") {
 			for {
 				fromTime, ok := params.(map[string]interface{})["fromTime"]
@@ -246,8 +249,10 @@ func (a *App) doProxy(jsonStr []byte, query, key string) ([]byte, error) {
 			}
 		}
 
+		// split bucket
 		part, ok := params.(map[string]interface{})["_part"]
-		if ok && part == "auto" {
+		allowSplit := allowBucketSplit(a.Config.AllowSplitBucket, buckets.(string))
+		if ok && part == "auto" && allowSplit {
 			wg := &sync.WaitGroup{}
 			wg.Add(10)
 
@@ -292,22 +297,30 @@ func (a *App) doProxy(jsonStr []byte, query, key string) ([]byte, error) {
 			}
 
 			var allResults []proxyResponse
+			var errs []string
 			go func() {
 				for t := range result {
 					if len(t.data.QueryResult.Data.Rows) > 0 {
 						allResults = append(allResults, t)
+					}
+					if t.err != nil {
+						errs = append(errs, err.Error())
 					}
 					wg.Done()
 				}
 			}()
 
 			wg.Wait()
-			if len(allResults) != 10 {
-				return nil, fmt.Errorf("Timeout triggered\n")
+			if len(errs) > 0 {
+				return nil, fmt.Errorf("Something error %s\n", strings.Join(errs, ","))
 			}
 			return a.mergeResult(allResults)
 		}
 
+		// if not allow, reset _part to -1 and run
+		if ok && part == "auto" && !allowSplit {
+			params.(map[string]interface{})["_part"] = "-1"
+		}
 	}
 
 	forceRequestQuery, err := json.Marshal(data)
@@ -411,6 +424,21 @@ func (a *App) doProxy(jsonStr []byte, query, key string) ([]byte, error) {
 		return nil, err
 	}
 	return respBody, nil
+}
+
+func allowBucketSplit(bucketConfig string, buckets string) bool {
+	if bucketConfig == "" {
+		return true
+	}
+	if buckets == "" {
+		return false
+	}
+	for _, b := range strings.Split(buckets, ",") {
+		if strings.Contains(bucketConfig, strings.ReplaceAll(b, "'", "")) {
+			return true
+		}
+	}
+	return false
 }
 
 func toString(rows []map[string]interface{}) string {

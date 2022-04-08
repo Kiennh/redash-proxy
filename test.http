@@ -3,7 +3,7 @@ Accept: */*
 Cache-Control: no-cache
 Authorization: Key meayFBZn9UDMdYLpV5vzkNcKEvEWvUTkc3QNrItr
 
-{"parameters":{"bucket":"'boxstudio'","_part":"auto"}}
+{"parameters":{"bucket":"'boxes'","_part":"auto"}}
 
 ###
 
@@ -19,7 +19,7 @@ Accept: */*
 Cache-Control: no-cache
 Authorization: Key meayFBZn9UDMdYLpV5vzkNcKEvEWvUTkc3QNrItr
 
-{"parameters":{"bucket":"'vnazota','boxstudio'","time":"2022-01-01"}}
+{"parameters":{"bucket":"'vnazota','boxstudio'","time":"2022-03-01"}}
 
 ###
 
